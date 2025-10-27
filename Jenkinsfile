@@ -2,15 +2,14 @@ pipeline {
     agent any
 
     tools {
-        maven 'MavenSystem' // nombre configurado en Jenkins → Global Tool Configuration
+        maven 'MavenSystem' // o el nombre configurado en Jenkins
     }
 
     environment {
         APP_NAME = 'greeting'
         DEPLOY_DIR = '/opt/app'
-        JAR_NAME = "${APP_NAME}.jar"
-        LOG_FILE = "${DEPLOY_DIR}/app.log"
-        PORT = '8787'
+        JAR_NAME = 'greeting.jar'
+        SERVICE = 'greeting.service'
     }
 
     stages {
@@ -28,40 +27,31 @@ pipeline {
             }
         }
 
-        stage('Stop Old Instance') {
-            steps {
-                echo "Deteniendo instancia anterior (si existe)..."
-                sh """
-                    PID=\$(lsof -t -i:${PORT}) || true
-                    if [ ! -z "\$PID" ]; then
-                        echo "Deteniendo proceso \$PID en puerto ${PORT}..."
-                        kill -9 \$PID
-                        sleep 3
-                    else
-                        echo "No se encontró proceso en el puerto ${PORT}"
-                    fi
-                """
-            }
-        }
-
         stage('Deploy') {
             steps {
-                echo "🚀 Desplegando nueva versión..."
-                sh """
-                    cp target/*.jar ${DEPLOY_DIR}/${JAR_NAME}
-                    nohup java -jar ${DEPLOY_DIR}/${JAR_NAME} --server.port=${PORT} > ${LOG_FILE} 2>&1 &
-                    echo "Nueva versión ejecutándose en puerto ${PORT}"
-                """
+                echo "Desplegando nueva versión..."
+                sh '''
+                    echo "Copiando nuevo JAR..."
+                    sudo cp target/*.jar ${DEPLOY_DIR}/${JAR_NAME}
+
+                    echo "Reiniciando servicio..."
+                    sudo systemctl daemon-reload
+                    sudo systemctl restart ${SERVICE}
+
+                    echo "Verificando estado..."
+                    sleep 5
+                    sudo systemctl status ${SERVICE} --no-pager
+                '''
             }
         }
     }
 
     post {
         success {
-            echo "Despliegue exitoso de ${APP_NAME} en el puerto ${PORT}"
+            echo "Despliegue exitoso en el puerto 8787"
         }
         failure {
-            echo "Error durante el pipeline"
+            echo "Error durante el despliegue. Revisar logs en /opt/app/app.log"
         }
     }
 }
